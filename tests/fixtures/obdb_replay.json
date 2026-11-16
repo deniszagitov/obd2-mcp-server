@@ -1,0 +1,604 @@
+{
+  "source": "https://github.com/OBDb/Lexus-CT-200h/tree/d5067c8578d05b0e224df19232798caa660a11b9/tests/test_cases",
+  "license": "CC BY-SA 4.0; copyright OBDb/Lexus-CT-200h contributors; see src/obd2_mcp/profiles/OBDb-LICENSE.txt",
+  "cases": [
+    {
+      "command_id": "7E2.7EA.2101",
+      "model_year": 2011,
+      "expected_values": {
+        "CT200H_AAT_7E2": 33,
+        "CT200H_ACCEL_PEDAL_POS_1": 16.07843,
+        "CT200H_ACCEL_PEDAL_POS_2": 32.15686,
+        "CT200H_ATMOSPHERE_P_7E2": 99,
+        "CT200H_B": 14.082,
+        "CT200H_CALC_LOAD_7E2": 0,
+        "CT200H_DTC_CLEAR_MIN_RAW": 4538,
+        "CT200H_DTC_CLEAR_RUN_DIST": 1795,
+        "CT200H_DTC_CLEAR_WARM_UP": 54,
+        "CT200H_ECT_7E2": 90,
+        "CT200H_ENG_RUN_TIME": 193,
+        "CT200H_IAT_7E2": 65,
+        "CT200H_MANIFOLD_AIR_P_7E2": 100,
+        "CT200H_RPM_7E2": 0,
+        "CT200H_ST_CHG_ALL_BAT": 50.58824,
+        "CT200H_THROTTLE_POS": 16.07843,
+        "CT200H_VSS_7E2": 0
+      },
+      "response": "7E8101B610100000000\n7E82114646960820000\n7E8220000C100297A29\n7E82337070211BC3750\n7EA1018610100646949\n7EA21638200000000C1\n7EA2229295236070311\n7EA23BA370281000000"
+    },
+    {
+      "command_id": "7E2.7EA.2101",
+      "model_year": 2011,
+      "expected_values": {
+        "CT200H_AAT_7E2": 30,
+        "CT200H_ACCEL_PEDAL_POS_1": 16.07843,
+        "CT200H_ACCEL_PEDAL_POS_2": 32.15686,
+        "CT200H_ATMOSPHERE_P_7E2": 100,
+        "CT200H_B": 14.257,
+        "CT200H_CALC_LOAD_7E2": 0,
+        "CT200H_DTC_CLEAR_MIN_RAW": 9707,
+        "CT200H_DTC_CLEAR_RUN_DIST": 3759,
+        "CT200H_DTC_CLEAR_WARM_UP": 117,
+        "CT200H_ECT_7E2": 73,
+        "CT200H_ENG_RUN_TIME": 199,
+        "CT200H_IAT_7E2": 51,
+        "CT200H_MANIFOLD_AIR_P_7E2": 101,
+        "CT200H_RPM_7E2": 0,
+        "CT200H_ST_CHG_ALL_BAT": 55.68627,
+        "CT200H_THROTTLE_POS": 16.47059,
+        "CT200H_VSS_7E2": 0
+      },
+      "response": "7E8101B610100000000\n7E82114655B60710000\n7EA1018610100655B46\n7E8220000C7002A7B2A\n7E823780EAD25EF37FF\n7EA21647100000000C7\n7EA222A2952750EAF25\n7EA23EB37B18E000000"
+    },
+    {
+      "command_id": "7E2.7EA.2101",
+      "model_year": 2011,
+      "expected_values": {
+        "CT200H_AAT_7E2": 33,
+        "CT200H_ACCEL_PEDAL_POS_1": 16.07843,
+        "CT200H_ACCEL_PEDAL_POS_2": 32.15686,
+        "CT200H_ATMOSPHERE_P_7E2": 99,
+        "CT200H_B": 14.101,
+        "CT200H_CALC_LOAD_7E2": 0,
+        "CT200H_DTC_CLEAR_MIN_RAW": 4598,
+        "CT200H_DTC_CLEAR_RUN_DIST": 1810,
+        "CT200H_DTC_CLEAR_WARM_UP": 54,
+        "CT200H_ECT_7E2": 88,
+        "CT200H_ENG_RUN_TIME": 3795,
+        "CT200H_IAT_7E2": 56,
+        "CT200H_MANIFOLD_AIR_P_7E2": 100,
+        "CT200H_RPM_7E2": 0,
+        "CT200H_ST_CHG_ALL_BAT": 51.37255,
+        "CT200H_THROTTLE_POS": 16.47059,
+        "CT200H_VSS_7E2": 0
+      },
+      "response": "7E8101B610100000000\n7EA1018610100646049\n7E82114646060800000\n7E822000ED1002A7B2A\n7EA2163800000000ED3\n7E82337071111F83777\n7EA222A295236071211\n7EA23F6371583000000"
+    },
+    {
+      "command_id": "7E2.7EA.2101",
+      "model_year": 2011,
+      "expected_values": {
+        "CT200H_AAT_7E2": 30,
+        "CT200H_ACCEL_PEDAL_POS_1": 16.07843,
+        "CT200H_ACCEL_PEDAL_POS_2": 31.76471,
+        "CT200H_ATMOSPHERE_P_7E2": 100,
+        "CT200H_B": 14.296,
+        "CT200H_CALC_LOAD_7E2": 0,
+        "CT200H_DTC_CLEAR_MIN_RAW": 9810,
+        "CT200H_DTC_CLEAR_RUN_DIST": 3791,
+        "CT200H_DTC_CLEAR_WARM_UP": 120,
+        "CT200H_ECT_7E2": 87,
+        "CT200H_ENG_RUN_TIME": 1820,
+        "CT200H_IAT_7E2": 43,
+        "CT200H_MANIFOLD_AIR_P_7E2": 100,
+        "CT200H_RPM_7E2": 0,
+        "CT200H_ST_CHG_ALL_BAT": 54.11765,
+        "CT200H_THROTTLE_POS": 16.07843,
+        "CT200H_VSS_7E2": 34
+      },
+      "response": "7EA1018610100645346\n7E8101B610100000000\n7E821146453607F0000\n7EA21647F000022071C\n7E82224071A00297A29\n7E8237B0ECD26563827\n7EA22292951780ECF26\n7EA235237D88A000000"
+    },
+    {
+      "command_id": "7E2.7EA.2168",
+      "model_year": 2011,
+      "expected_values": {
+        "CT200H_MG2_CTRL_MODE_PWM_0_1_2": 0,
+        "CT200H_MG2_TQ_7E2": 33.875,
+        "CT200H_MG2_TQ_EXECUTION": 30.625
+      },
+      "response": "7EA076168810F80F500"
+    },
+    {
+      "command_id": "7E2.7EA.2161",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG1_REVOLUTION": 0,
+        "CT200H_MG1_T": 17,
+        "CT200H_MG1_T_AFTER_IG_ON": 14,
+        "CT200H_MG1_T_MAX": 17
+      },
+      "response": "7EA0761613936398000"
+    },
+    {
+      "command_id": "7E2.7EA.2161",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG1_REVOLUTION": -1,
+        "CT200H_MG1_T": 55,
+        "CT200H_MG1_T_AFTER_IG_ON": 55,
+        "CT200H_MG1_T_MAX": 55
+      },
+      "response": "7EA0761615F5F5F7FFF"
+    },
+    {
+      "command_id": "7E2.7EA.2161",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG1_REVOLUTION": 8542,
+        "CT200H_MG1_T": 61,
+        "CT200H_MG1_T_AFTER_IG_ON": 48,
+        "CT200H_MG1_T_MAX": 61
+      },
+      "response": "7EA076161655865A15E"
+    },
+    {
+      "command_id": "7E2.7EA.2161",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG1_REVOLUTION": -5299,
+        "CT200H_MG1_T": 66,
+        "CT200H_MG1_T_AFTER_IG_ON": 54,
+        "CT200H_MG1_T_MAX": 66
+      },
+      "response": "7EA0761616A5E6A6B4D"
+    },
+    {
+      "command_id": "7E2.7EA.2162",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG2_REVOLUTION": 0,
+        "CT200H_MG2_T": 15,
+        "CT200H_MG2_T_AFTER_IG_ON": 14,
+        "CT200H_MG2_T_MAX": 17
+      },
+      "response": "7EA0761623736398000"
+    },
+    {
+      "command_id": "7E2.7EA.2162",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG2_REVOLUTION": -1,
+        "CT200H_MG2_T": 21,
+        "CT200H_MG2_T_AFTER_IG_ON": 14,
+        "CT200H_MG2_T_MAX": 23
+      },
+      "response": "7EA0761623D363F7FFF"
+    },
+    {
+      "command_id": "7E2.7EA.2162",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG2_REVOLUTION": -396,
+        "CT200H_MG2_T": 28,
+        "CT200H_MG2_T_AFTER_IG_ON": 14,
+        "CT200H_MG2_T_MAX": 28
+      },
+      "response": "7EA0761624436447E74"
+    },
+    {
+      "command_id": "7E2.7EA.2162",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_MG2_REVOLUTION": 9909,
+        "CT200H_MG2_T": 59,
+        "CT200H_MG2_T_AFTER_IG_ON": 49,
+        "CT200H_MG2_T_MAX": 59
+      },
+      "response": "7EA076162635963A6B5"
+    },
+    {
+      "command_id": "7E2.7EA.2174",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BOOST_CONV_T_AFTER_ON": 15,
+        "CT200H_BOOST_CONV_T_HI": 15,
+        "CT200H_BOOST_CONV_T_LO": 15,
+        "CT200H_BOOST_CONV_T_MAX": 25,
+        "CT200H_CONV_GATE_STAT": 0,
+        "CT200H_OVERVOLTAGE_INPUT": 0,
+        "CT200H_OVERVOLTAGE_INPUT_INVERTER": 0,
+        "CT200H_VH_V_AFTER_BOOSTING_7E2": 217.5,
+        "CT200H_VL_V_BEFORE_BOOSTING_7E2": 219
+      },
+      "response": "7EA100B617437373741\n7EA210001B601B30000"
+    },
+    {
+      "command_id": "7E2.7EA.2174",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BOOST_CONV_T_AFTER_ON": 15,
+        "CT200H_BOOST_CONV_T_HI": 15,
+        "CT200H_BOOST_CONV_T_LO": 15,
+        "CT200H_BOOST_CONV_T_MAX": 25,
+        "CT200H_CONV_GATE_STAT": 0,
+        "CT200H_OVERVOLTAGE_INPUT": 0,
+        "CT200H_OVERVOLTAGE_INPUT_INVERTER": 0,
+        "CT200H_VH_V_AFTER_BOOSTING_7E2": 221.5,
+        "CT200H_VL_V_BEFORE_BOOSTING_7E2": 223.5
+      },
+      "response": "7EA100B617437373741\n7EA210001BF01BB0000"
+    },
+    {
+      "command_id": "7E2.7EA.2174",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BOOST_CONV_T_AFTER_ON": 15,
+        "CT200H_BOOST_CONV_T_HI": 15,
+        "CT200H_BOOST_CONV_T_LO": 15,
+        "CT200H_BOOST_CONV_T_MAX": 25,
+        "CT200H_CONV_GATE_STAT": 0,
+        "CT200H_OVERVOLTAGE_INPUT": 0,
+        "CT200H_OVERVOLTAGE_INPUT_INVERTER": 0,
+        "CT200H_VH_V_AFTER_BOOSTING_7E2": 223.5,
+        "CT200H_VL_V_BEFORE_BOOSTING_7E2": 225.5
+      },
+      "response": "7EA100B617437373741\n7EA210001C301BF0000"
+    },
+    {
+      "command_id": "7E2.7EA.2174",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BOOST_CONV_T_AFTER_ON": 15,
+        "CT200H_BOOST_CONV_T_HI": 17,
+        "CT200H_BOOST_CONV_T_LO": 17,
+        "CT200H_BOOST_CONV_T_MAX": 35,
+        "CT200H_CONV_GATE_STAT": 0,
+        "CT200H_OVERVOLTAGE_INPUT": 0,
+        "CT200H_OVERVOLTAGE_INPUT_INVERTER": 0,
+        "CT200H_VH_V_AFTER_BOOSTING_7E2": 216,
+        "CT200H_VL_V_BEFORE_BOOSTING_7E2": 217.5
+      },
+      "response": "7EA100B61743939374B\n7EA210001B301B00000"
+    },
+    {
+      "command_id": "7E2.7EA.2181",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_AUXILIARY_BAT_V": 13.9421,
+        "CT200H_BAT_BLOCK_V_V01": 13.6777,
+        "CT200H_BAT_BLOCK_V_V02": 13.6484,
+        "CT200H_BAT_BLOCK_V_V03": 13.55808,
+        "CT200H_BAT_BLOCK_V_V04": 13.55808,
+        "CT200H_BAT_BLOCK_V_V05": 13.58738,
+        "CT200H_BAT_BLOCK_V_V06": 13.52757,
+        "CT200H_BAT_BLOCK_V_V07": 13.59836,
+        "CT200H_BAT_BLOCK_V_V08": 13.59836,
+        "CT200H_BAT_BLOCK_V_V09": 13.57761,
+        "CT200H_BAT_BLOCK_V_V10_RAW": 13.59836,
+        "CT200H_BAT_BLOCK_V_V11": 13.6777,
+        "CT200H_BAT_BLOCK_V_V12": 13.74849,
+        "CT200H_BAT_BLOCK_V_V13": 13.52757,
+        "CT200H_BAT_BLOCK_V_V14": 13.57761,
+        "CT200H_BAT_BLOCK_V_V16": 189
+      },
+      "response": "7EA102361812BC62BAE\n7EA212B642B642B7C2B\n7EA224B2B852B852B74\n7EA232B852BC62C002B\n7EA244B2B74ACD40762\n7EA2516000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2181",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_AUXILIARY_BAT_V": 13.32397,
+        "CT200H_BAT_BLOCK_V_V01": 13.96819,
+        "CT200H_BAT_BLOCK_V_V02": 13.86811,
+        "CT200H_BAT_BLOCK_V_V03": 13.99749,
+        "CT200H_BAT_BLOCK_V_V04": 13.94744,
+        "CT200H_BAT_BLOCK_V_V05": 13.82783,
+        "CT200H_BAT_BLOCK_V_V06": 13.74849,
+        "CT200H_BAT_BLOCK_V_V07": 13.74849,
+        "CT200H_BAT_BLOCK_V_V08": 13.69845,
+        "CT200H_BAT_BLOCK_V_V09": 13.94744,
+        "CT200H_BAT_BLOCK_V_V10_RAW": 13.86811,
+        "CT200H_BAT_BLOCK_V_V11": 13.77779,
+        "CT200H_BAT_BLOCK_V_V12": 13.79731,
+        "CT200H_BAT_BLOCK_V_V13": 13.91815,
+        "CT200H_BAT_BLOCK_V_V14": 13.94744,
+        "CT200H_BAT_BLOCK_V_V16": 195
+      },
+      "response": "7EA102361812CB42C62\n7EA212CCC2CA32C412C\n7EA22002C002BD72CA3\n7EA232C622C182C282C\n7EA248B2CA3AAD9079E\n7EA2500000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2181",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_AUXILIARY_BAT_V": 13.8531,
+        "CT200H_BAT_BLOCK_V_V01": 14.55773,
+        "CT200H_BAT_BLOCK_V_V02": 14.50769,
+        "CT200H_BAT_BLOCK_V_V03": 14.55773,
+        "CT200H_BAT_BLOCK_V_V04": 14.52721,
+        "CT200H_BAT_BLOCK_V_V05": 14.36732,
+        "CT200H_BAT_BLOCK_V_V06": 14.28798,
+        "CT200H_BAT_BLOCK_V_V07": 14.50769,
+        "CT200H_BAT_BLOCK_V_V08": 14.47839,
+        "CT200H_BAT_BLOCK_V_V09": 14.47839,
+        "CT200H_BAT_BLOCK_V_V10_RAW": 14.43811,
+        "CT200H_BAT_BLOCK_V_V11": 14.55773,
+        "CT200H_BAT_BLOCK_V_V12": 14.57726,
+        "CT200H_BAT_BLOCK_V_V13": 14.43811,
+        "CT200H_BAT_BLOCK_V_V14": 14.43811,
+        "CT200H_BAT_BLOCK_V_V16": 204
+      },
+      "response": "7EA102361812E972E6E\n7EA212E972E7E2DFB2D\n7EA22BA2E6E2E562E56\n7EA232E352E972EA72E\n7EA24352E35AC8B07F8\n7EA251F000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2181",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_AUXILIARY_BAT_V": 13.98233,
+        "CT200H_BAT_BLOCK_V_V01": 14.57726,
+        "CT200H_BAT_BLOCK_V_V02": 14.52721,
+        "CT200H_BAT_BLOCK_V_V03": 14.57726,
+        "CT200H_BAT_BLOCK_V_V04": 14.55773,
+        "CT200H_BAT_BLOCK_V_V05": 14.57726,
+        "CT200H_BAT_BLOCK_V_V06": 14.52721,
+        "CT200H_BAT_BLOCK_V_V07": 14.6273,
+        "CT200H_BAT_BLOCK_V_V08": 14.6273,
+        "CT200H_BAT_BLOCK_V_V09": 14.52721,
+        "CT200H_BAT_BLOCK_V_V10_RAW": 14.52721,
+        "CT200H_BAT_BLOCK_V_V11": 14.6273,
+        "CT200H_BAT_BLOCK_V_V12": 14.6273,
+        "CT200H_BAT_BLOCK_V_V13": 14.52721,
+        "CT200H_BAT_BLOCK_V_V14": 14.52721,
+        "CT200H_BAT_BLOCK_V_V16": 204
+      },
+      "response": "7EA102361812EA72E7E\n7EA212EA72E972EA72E\n7EA227E2ED02ED02E7E\n7EA232E7E2ED02ED02E\n7EA247E2E7EACF507F8\n7EA251D000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2187",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_HVBAT_IAT": 16.31494,
+        "CT200H_T_BATT_TB1": 19.82144,
+        "CT200H_T_BATT_TB2": 22.78907,
+        "CT200H_T_BATT_TB3": 20.18068
+      },
+      "response": "7EA100A6187425745D9\n7EA2148D14635000000"
+    },
+    {
+      "command_id": "7E2.7EA.2187",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_HVBAT_IAT": 18.22438,
+        "CT200H_T_BATT_TB1": 20.18068,
+        "CT200H_T_BATT_TB2": 22.91012,
+        "CT200H_T_BATT_TB3": 20.42277
+      },
+      "response": "7EA100A618744404635\n7EA2148F04673000000"
+    },
+    {
+      "command_id": "7E2.7EA.2187",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_HVBAT_IAT": 18.9741,
+        "CT200H_T_BATT_TB1": 20.89135,
+        "CT200H_T_BATT_TB2": 23.49974,
+        "CT200H_T_BATT_TB3": 20.89135
+      },
+      "response": "7EA100A6187450046EB\n7EA21498746EB000000"
+    },
+    {
+      "command_id": "7E2.7EA.2187",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_HVBAT_IAT": 21.96126,
+        "CT200H_T_BATT_TB1": 22.67193,
+        "CT200H_T_BATT_TB2": 24.44861,
+        "CT200H_T_BATT_TB3": 21.85192
+      },
+      "response": "7EA100A618747FD48B3\n7EA214A7A47E1000000"
+    },
+    {
+      "command_id": "7E2.7EA.2192",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_ACCUMULATED_TIME_BAT": 0,
+        "CT200H_ACCUMULATED_TIME_BAT_TOO": 0,
+        "CT200H_ACCUMULATED_TIME_DC": 0,
+        "CT200H_ACCUMULATED_TIME_HOT_T": 0,
+        "CT200H_BAT_BLOCK_MAX_V": 13.91815,
+        "CT200H_BAT_BLOCK_MIN_V": 13.69845,
+        "CT200H_BAT_BLOCK_NUMBER_MAX_V": 12,
+        "CT200H_BAT_BLOCK_NUMBER_MIN_V": 7,
+        "CT200H_NUM_BAT_BLOCKS": 14
+      },
+      "response": "7EA101161922BD7062C\n7EA218B0B0E00000000\n7EA2200000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2192",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_ACCUMULATED_TIME_BAT": 0,
+        "CT200H_ACCUMULATED_TIME_BAT_TOO": 0,
+        "CT200H_ACCUMULATED_TIME_DC": 0,
+        "CT200H_ACCUMULATED_TIME_HOT_T": 0,
+        "CT200H_BAT_BLOCK_MAX_V": 14.1879,
+        "CT200H_BAT_BLOCK_MIN_V": 13.99749,
+        "CT200H_BAT_BLOCK_NUMBER_MAX_V": 1,
+        "CT200H_BAT_BLOCK_NUMBER_MIN_V": 11,
+        "CT200H_NUM_BAT_BLOCKS": 14
+      },
+      "response": "7EA101161922CCC0A2D\n7EA2168000E00000000\n7EA2200000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2192",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_ACCUMULATED_TIME_BAT": 0,
+        "CT200H_ACCUMULATED_TIME_BAT_TOO": 0,
+        "CT200H_ACCUMULATED_TIME_DC": 0,
+        "CT200H_ACCUMULATED_TIME_HOT_T": 0,
+        "CT200H_BAT_BLOCK_MAX_V": 14.50769,
+        "CT200H_BAT_BLOCK_MIN_V": 14.35756,
+        "CT200H_BAT_BLOCK_NUMBER_MAX_V": 14,
+        "CT200H_BAT_BLOCK_NUMBER_MIN_V": 9,
+        "CT200H_NUM_BAT_BLOCKS": 14
+      },
+      "response": "7EA101161922DF3082E\n7EA216E0D0E00000000\n7EA2200000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2192",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_ACCUMULATED_TIME_BAT": 0,
+        "CT200H_ACCUMULATED_TIME_BAT_TOO": 0,
+        "CT200H_ACCUMULATED_TIME_DC": 0,
+        "CT200H_ACCUMULATED_TIME_HOT_T": 0,
+        "CT200H_BAT_BLOCK_MAX_V": 14.69809,
+        "CT200H_BAT_BLOCK_MIN_V": 14.47839,
+        "CT200H_BAT_BLOCK_NUMBER_MAX_V": 7,
+        "CT200H_BAT_BLOCK_NUMBER_MIN_V": 10,
+        "CT200H_NUM_BAT_BLOCKS": 14
+      },
+      "response": "7EA101161922E56092F\n7EA210A060E00000000\n7EA2200000000000000"
+    },
+    {
+      "command_id": "7E2.7EA.2195",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_INTERNAL_RES_R01": 0.019,
+        "CT200H_INTERNAL_RES_R02": 0.019,
+        "CT200H_INTERNAL_RES_R03": 0.019,
+        "CT200H_INTERNAL_RES_R04": 0.019,
+        "CT200H_INTERNAL_RES_R05": 0.018,
+        "CT200H_INTERNAL_RES_R06": 0.018,
+        "CT200H_INTERNAL_RES_R07": 0.018,
+        "CT200H_INTERNAL_RES_R08": 0.019,
+        "CT200H_INTERNAL_RES_R09": 0.019,
+        "CT200H_INTERNAL_RES_R10": 0.019,
+        "CT200H_INTERNAL_RES_R11": 0.019,
+        "CT200H_INTERNAL_RES_R12": 0.019,
+        "CT200H_INTERNAL_RES_R13": 0.019,
+        "CT200H_INTERNAL_RES_R14": 0.019
+      },
+      "response": "7EA1010619513131313\n7EA2112121213131313\n7EA2213131300000000"
+    },
+    {
+      "command_id": "7E2.7EA.2195",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_INTERNAL_RES_R01": 0.027,
+        "CT200H_INTERNAL_RES_R02": 0.027,
+        "CT200H_INTERNAL_RES_R03": 0.028,
+        "CT200H_INTERNAL_RES_R04": 0.027,
+        "CT200H_INTERNAL_RES_R05": 0.027,
+        "CT200H_INTERNAL_RES_R06": 0.027,
+        "CT200H_INTERNAL_RES_R07": 0.027,
+        "CT200H_INTERNAL_RES_R08": 0.028,
+        "CT200H_INTERNAL_RES_R09": 0.028,
+        "CT200H_INTERNAL_RES_R10": 0.027,
+        "CT200H_INTERNAL_RES_R11": 0.027,
+        "CT200H_INTERNAL_RES_R12": 0.027,
+        "CT200H_INTERNAL_RES_R13": 0.028,
+        "CT200H_INTERNAL_RES_R14": 0.028
+      },
+      "response": "7EA101061951B1B1C1B\n7EA211B1B1B1C1C1B1B\n7EA221B1C1C00000000"
+    },
+    {
+      "command_id": "7E2.7EA.2195",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_INTERNAL_RES_R01": 0.028,
+        "CT200H_INTERNAL_RES_R02": 0.027,
+        "CT200H_INTERNAL_RES_R03": 0.028,
+        "CT200H_INTERNAL_RES_R04": 0.027,
+        "CT200H_INTERNAL_RES_R05": 0.028,
+        "CT200H_INTERNAL_RES_R06": 0.027,
+        "CT200H_INTERNAL_RES_R07": 0.027,
+        "CT200H_INTERNAL_RES_R08": 0.027,
+        "CT200H_INTERNAL_RES_R09": 0.028,
+        "CT200H_INTERNAL_RES_R10": 0.027,
+        "CT200H_INTERNAL_RES_R11": 0.028,
+        "CT200H_INTERNAL_RES_R12": 0.027,
+        "CT200H_INTERNAL_RES_R13": 0.028,
+        "CT200H_INTERNAL_RES_R14": 0.027
+      },
+      "response": "7EA101061951C1B1C1B\n7EA211C1B1B1B1C1B1C\n7EA221B1C1B00000000"
+    },
+    {
+      "command_id": "7E2.7EA.2195",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_INTERNAL_RES_R01": 0.028,
+        "CT200H_INTERNAL_RES_R02": 0.028,
+        "CT200H_INTERNAL_RES_R03": 0.028,
+        "CT200H_INTERNAL_RES_R04": 0.028,
+        "CT200H_INTERNAL_RES_R05": 0.028,
+        "CT200H_INTERNAL_RES_R06": 0.027,
+        "CT200H_INTERNAL_RES_R07": 0.028,
+        "CT200H_INTERNAL_RES_R08": 0.028,
+        "CT200H_INTERNAL_RES_R09": 0.028,
+        "CT200H_INTERNAL_RES_R10": 0.028,
+        "CT200H_INTERNAL_RES_R11": 0.028,
+        "CT200H_INTERNAL_RES_R12": 0.028,
+        "CT200H_INTERNAL_RES_R13": 0.028,
+        "CT200H_INTERNAL_RES_R14": 0.028
+      },
+      "response": "7EA101061951C1C1C1C\n7EA211C1B1C1C1C1C1C\n7EA221C1C1C00000000"
+    },
+    {
+      "command_id": "7E2.7EA.2198",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BATT_PACK_CURRENT": -78480,
+        "CT200H_DELTA_SOC": 0,
+        "CT200H_HVBAT_CHG_CTRL_KW": -19.5,
+        "CT200H_HVBAT_DCHG_CTRL_KW": 21,
+        "CT200H_SOC_AFTER_IG_ON": 48,
+        "CT200H_SOC_MAX": 69.5,
+        "CT200H_SOC_MIN": 46
+      },
+      "response": "7EA100A6198615859AA\n7EA2100608B5C000000"
+    },
+    {
+      "command_id": "7E2.7EA.2198",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BATT_PACK_CURRENT": -71700,
+        "CT200H_DELTA_SOC": 0,
+        "CT200H_HVBAT_CHG_CTRL_KW": -20,
+        "CT200H_HVBAT_DCHG_CTRL_KW": 21,
+        "CT200H_SOC_AFTER_IG_ON": 63,
+        "CT200H_SOC_MAX": 63,
+        "CT200H_SOC_MIN": 60
+      },
+      "response": "7EA100A619863FE58AA\n7EA21007E7E78000000"
+    },
+    {
+      "command_id": "7E2.7EA.2198",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BATT_PACK_CURRENT": -62390,
+        "CT200H_DELTA_SOC": 0,
+        "CT200H_HVBAT_CHG_CTRL_KW": -25,
+        "CT200H_HVBAT_DCHG_CTRL_KW": 20.5,
+        "CT200H_SOC_AFTER_IG_ON": 60,
+        "CT200H_SOC_MAX": 60,
+        "CT200H_SOC_MIN": 42
+      },
+      "response": "7EA100A619867A14EA9\n7EA2100787854000000"
+    },
+    {
+      "command_id": "7E2.7EA.2198",
+      "model_year": 2016,
+      "expected_values": {
+        "CT200H_BATT_PACK_CURRENT": -53120,
+        "CT200H_DELTA_SOC": 0,
+        "CT200H_HVBAT_CHG_CTRL_KW": -13,
+        "CT200H_HVBAT_DCHG_CTRL_KW": 19,
+        "CT200H_SOC_AFTER_IG_ON": 55.5,
+        "CT200H_SOC_MAX": 70.5,
+        "CT200H_SOC_MIN": 53.5
+      },
+      "response": "7EA100A61986B4066A6\n7EA21006F8D6B000000"
+    }
+  ]
+}

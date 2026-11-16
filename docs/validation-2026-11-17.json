@@ -1,0 +1,14 @@
+{
+  "client_date": "2026-11-17",
+  "version": "0.1.1.dev0",
+  "read_only_enforced": true,
+  "source_sha256": "ccc7452fac558672f3c349a7eba96ae41c751523846a542e3528a097d39802d7",
+  "tests_passed": 142,
+  "installed_stdio_mcp": "passed",
+  "isolated_wheel_stdio_mcp": "passed",
+  "wheel_source_and_data_files_match": 120,
+  "wheel_sha256": "16d0ed901dc9f56436c8bd2ec866b23bfaba005df90db8ec346a1e7196755148",
+  "this_validation_accessed_vehicle": false,
+  "active_codex_latest_version_verified": false,
+  "active_codex_observation": "Existing tool response has no new server metadata after requested restart; a fresh connection must still be verified."
+}

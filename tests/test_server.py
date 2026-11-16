@@ -134,7 +134,7 @@ class TestMCPTools:
     async def test_read_dtc_empty_module(self):
         result = _parse(await _handle_read_dtc({"module": "folding_top"}))
         assert result["dtc_count"] == 0
-        assert "clean" in result["summary"].lower()
+        assert "other ecu systems were not checked" in result["summary"].lower()
 
     @pytest.mark.asyncio
     async def test_clear_dtc_requires_confirm(self):
@@ -142,9 +142,10 @@ class TestMCPTools:
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_clear_dtc_success(self):
+    async def test_clear_dtc_confirm_cannot_override_read_only(self):
         result = _parse(await _handle_clear_dtc({"module": "passenger_door", "confirm": True}))
-        assert result["cleared"] is True
+        assert "read-only" in result["error"]
+        assert result["server"]["read_only"] is True
 
     @pytest.mark.asyncio
     async def test_get_live_data(self):

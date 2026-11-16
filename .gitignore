@@ -12,6 +12,9 @@ build/
 .DS_Store
 node_modules/
 
+# Local vehicle captures, session archives and machine-specific MCP configuration
+/local/
+
 # IDE / tool state
 .omc/
 

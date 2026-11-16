@@ -24,8 +24,9 @@ from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import TextContent, Tool, ToolAnnotations
 
+from obd2_mcp import __version__
 from obd2_mcp.dtc_database import (
     find_codes_for_brand,
     get_dtc_category,
@@ -35,6 +36,7 @@ from obd2_mcp.dtc_database import (
 )
 from obd2_mcp.mock_obd import MockOBDConnection
 from obd2_mcp.obd_connection import OBDConnectionProtocol, RealOBDConnection
+from obd2_mcp.runtime import runtime_status
 
 logger = logging.getLogger(__name__)
 
@@ -42,17 +44,19 @@ logger = logging.getLogger(__name__)
 # Server setup
 # ---------------------------------------------------------------------------
 
-server = Server("obd2-mcp-server")
+server = Server("obd2-mcp-server", version=__version__)
 connection: OBDConnectionProtocol | None = None
 
 
 def _json_response(data: Any) -> list[TextContent]:
     """Wrap a dict/list as a JSON TextContent response."""
+    if isinstance(data, dict):
+        data = {**data, "server": runtime_status()}
     return [TextContent(type="text", text=json.dumps(data, indent=2, default=str))]
 
 
 def _error_response(message: str) -> list[TextContent]:
-    return [TextContent(type="text", text=json.dumps({"error": message}, indent=2))]
+    return _json_response({"error": message})
 
 
 def _ensure_connected() -> OBDConnectionProtocol:
@@ -92,9 +96,10 @@ async def _ensure_ready() -> OBDConnectionProtocol:
 TOOLS = [
     Tool(
         name="read_dtc",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
         description=(
             "Read Diagnostic Trouble Codes (DTCs) from the vehicle. "
-            "Scans all modules by default, or a specific module if specified. "
+            "This CT200h installation reads stored emissions codes from response ECU 7E8 only. "
             "Returns fault codes with descriptions and status."
         ),
         inputSchema={
@@ -103,40 +108,28 @@ TOOLS = [
                 "module": {
                     "type": "string",
                     "description": (
-                        "Specific module to scan (e.g. 'passenger_door', 'pcm', 'folding_top'). "
-                        "Omit to scan all modules."
+                        "For this installation omit, or use 'engine' / '7E8'. Other systems are not checked."
                     ),
                 },
             },
         },
     ),
     Tool(
-        name="clear_dtc",
-        description=(
-            "Clear stored Diagnostic Trouble Codes. "
-            "WARNING: This clears fault memory — codes will be lost until they recur. "
-            "Requires explicit confirmation."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "module": {
-                    "type": "string",
-                    "description": "Module to clear codes from. Required.",
-                },
-                "confirm": {
-                    "type": "boolean",
-                    "description": "Must be true to proceed. Safety check.",
-                },
-            },
-            "required": ["module", "confirm"],
-        },
+        name="get_server_status",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+        description="Inspect running version, process, loaded-source fingerprint and enforced "
+                    "read-only policy without connecting to the car. Also included in every JSON response.",
+        inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     Tool(
         name="get_live_data",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
         description=(
-            "Read real-time sensor values from the vehicle (engine RPM, coolant temp, speed, etc.). "
-            "Specify PIDs for targeted readings, or omit for all available sensors."
+            "Read a page of sequential sensor samples. With no PIDs, discover advertised Mode 01 "
+            "sensors from engine 7E8 and hybrid 7EA. scope=extended/all also probes the pinned "
+            "CT200h candidate catalogue; its formulas remain unverified for this vehicle. "
+            "Use list_sensors for exact IDs. Follow coverage.next_offset until null; check "
+            "unavailable and per-request raw responses. Never assume complete vehicle coverage."
         ),
         inputSchema={
             "type": "object",
@@ -146,11 +139,65 @@ TOOLS = [
                     "items": {"type": "string"},
                     "description": (
                         "List of PIDs to read (e.g. ['RPM', 'COOLANT_TEMP', 'SPEED']). "
-                        "Omit for all available readings."
+                        "Hybrid standard IDs have prefix 7EA:, extended IDs start CT200H_."
                     ),
+                },
+                "scope": {"type": "string", "enum": ["standard", "extended", "all"],
+                          "default": "standard"},
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 64, "default": 32,
+                          "description": "Maximum ECU requests per page; one request may return many fields."},
+                "allow_partial_prefix": {
+                    "type": "boolean", "default": False,
+                    "description": "Experimental CT200h 7EA/2181 only: when 34 of 35 bytes arrive in order, "
+                                   "expose the first 14 bounded voltage fields as decoded_partial_unverified. "
+                                   "OEM application integrity remains unknown; default strict mode rejects the response.",
+                },
+                "response_ecus": {
+                    "type": "array", "items": {"type": "string"}, "minItems": 1,
+                    "description": "Restrict candidate reads to registered responders, e.g. ['7E8'] "
+                                   "for engine or ['7EA'] for hybrid. Does not change PID discovery scope.",
                 },
             },
         },
+    ),
+    Tool(
+        name="list_sensors",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+        description=(
+            "List a page of sensor IDs, ECU addresses, commands and evidence status. "
+            "standard/all discovers ECU-advertised Mode 01 PIDs; extended lists the offline "
+            "OBDb CT200h catalogue (650 candidate fields, not 650 supported readings). "
+            "Check applicable_year, transport_supported, verification and next_offset."
+        ),
+        inputSchema={
+            "type": "object", "properties": {
+                "scope": {"type": "string", "enum": ["standard", "extended", "all"], "default": "all"},
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
+                "refresh": {"type": "boolean", "default": False},
+            },
+        },
+    ),
+    Tool(
+        name="get_diagnostics",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True),
+        description=(
+            "Read standard diagnostic data from the selected emissions ECU (engine 7E8 or hybrid 7EA). "
+            "Sections: stored/pending/permanent DTCs (03/07/0A), identity with supported InfoTypes "
+            "(09: VIN, calibration IDs, CVNs, ECU name), freeze frame 0 (02), and supported Mode 06 "
+            "monitor records. Five observed Mode 06 scaling IDs are normalized; unknown scaling "
+            "and semantic pass/fail remain unknown. Misfire accumulators are not threshold tests. "
+            "Follow coverage.next_offset; inspect discovery and per-request status/raw data. "
+            "Unavailable data does not mean no faults. This does not scan all vehicle modules."
+        ),
+        inputSchema={"type": "object", "properties": {
+            "section": {"type": "string", "enum": ["dtc", "identity", "freeze_frame", "monitors", "all"],
+                        "default": "dtc"},
+            "ecu": {"type": "string", "enum": ["engine", "hybrid"], "default": "engine"},
+            "offset": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 64, "default": 32},
+        }},
     ),
     Tool(
         name="get_vehicle_info",
@@ -304,6 +351,8 @@ async def list_tools() -> list[Tool]:
 
 async def _call_method(method_name: str, **kwargs):
     """Call a method on the connection, supporting both sync and async implementations."""
+    if method_name not in {"get_dtcs", "get_live_data", "get_vehicle_info", "list_modules", "get_freeze_frame"}:
+        raise PermissionError("Method rejected by the read-only policy")
     conn = await _ensure_ready()
     method = getattr(conn, method_name)
     result = method(**kwargs)
@@ -316,12 +365,18 @@ async def _call_method(method_name: str, **kwargs):
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     try:
-        if name == "read_dtc":
+        if name == "get_server_status":
+            return _json_response({"backend": type(connection).__name__ if connection else None})
+        elif name == "read_dtc":
             return await _handle_read_dtc(arguments)
         elif name == "clear_dtc":
             return await _handle_clear_dtc(arguments)
         elif name == "get_live_data":
             return await _handle_get_live_data(arguments)
+        elif name == "list_sensors":
+            return await _handle_list_sensors(arguments)
+        elif name == "get_diagnostics":
+            return await _handle_get_diagnostics(arguments)
         elif name == "get_vehicle_info":
             return await _handle_get_vehicle_info(arguments)
         elif name == "list_modules":
@@ -351,13 +406,10 @@ async def _handle_read_dtc(args: dict[str, Any]) -> list[TextContent]:
 
     if not dtcs:
         return _json_response({
-            "module": module or "all",
+            "module": module or "emissions ECU response 7E8",
             "dtc_count": 0,
             "dtcs": [],
-            "summary": "No Diagnostic Trouble Codes found." + (
-                f" Module '{module}' reports clean." if module else
-                " All scanned modules report clean."
-            ),
+            "summary": "No stored emissions DTCs reported by selected ECU 7E8. Other ECU systems were not checked.",
         })
 
     dtc_list = []
@@ -372,33 +424,27 @@ async def _handle_read_dtc(args: dict[str, Any]) -> list[TextContent]:
         dtc_list.append(entry)
 
     return _json_response({
-        "module": module or "all",
+        "module": module or "emissions ECU response 7E8",
         "dtc_count": len(dtc_list),
         "dtcs": dtc_list,
     })
 
 
 async def _handle_clear_dtc(args: dict[str, Any]) -> list[TextContent]:
-    if not args.get("confirm"):
-        return _error_response(
-            "Safety check: set 'confirm' to true to clear DTCs. "
-            "This will erase stored fault codes from the module's memory."
-        )
-
-    module = args["module"]
-    success = await _call_method("clear_dtcs", module=module)
-
-    return _json_response({
-        "module": module,
-        "cleared": success,
-        "warning": (
-            "DTCs cleared. Codes will reappear if the underlying fault persists. "
-            "Drive the vehicle and re-scan to verify the repair."
-        ),
-    })
+    # Keep a denial for stale clients even though this action is not advertised.
+    return _error_response("Fault clearing is disabled by the read-only policy, including confirm=true")
 
 
 async def _handle_get_live_data(args: dict[str, Any]) -> list[TextContent]:
+    conn = await _ensure_ready()
+    if hasattr(conn, "read_snapshot"):
+        result = await conn.read_snapshot(
+            pids=args.get("pids"), scope=args.get("scope", "standard"),
+            offset=args.get("offset", 0), limit=args.get("limit", 32),
+            allow_partial_prefix=args.get("allow_partial_prefix", False),
+            response_ecus=args.get("response_ecus"),
+        )
+        return _json_response(result)
     pids = args.get("pids")
     readings = await _call_method("get_live_data", pids=pids)
 
@@ -415,6 +461,27 @@ async def _handle_get_live_data(args: dict[str, Any]) -> list[TextContent]:
         "reading_count": len(data),
         "readings": data,
     })
+
+
+async def _handle_list_sensors(args: dict[str, Any]) -> list[TextContent]:
+    # Extended catalogue lookup is offline: do not connect just to list names.
+    conn = connection if args.get("scope") == "extended" else await _ensure_ready()
+    if conn is None or not hasattr(conn, "list_sensors"):
+        return _error_response("Sensor catalogue is implemented for the CT200h BLE backend only")
+    return _json_response(await conn.list_sensors(
+        scope=args.get("scope", "all"), offset=args.get("offset", 0),
+        limit=args.get("limit", 50), refresh=args.get("refresh", False),
+    ))
+
+
+async def _handle_get_diagnostics(args: dict[str, Any]) -> list[TextContent]:
+    conn = await _ensure_ready()
+    if not hasattr(conn, "get_diagnostics"):
+        return _error_response("Standard diagnostic bundle is implemented for the CT200h BLE backend only")
+    return _json_response(await conn.get_diagnostics(
+        section=args.get("section", "dtc"), ecu=args.get("ecu", "engine"),
+        offset=args.get("offset", 0), limit=args.get("limit", 32),
+    ))
 
 
 async def _handle_get_vehicle_info(args: dict[str, Any]) -> list[TextContent]:
@@ -541,6 +608,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="OBD-II MCP Server — connect your car's diagnostics to Claude",
     )
     parser.add_argument(
+        "--read-only", action="store_true", default=True,
+        help="Explicitly enforce read-only operation (also the default; this fork has no write mode)",
+    )
+    parser.add_argument(
         "--mock",
         action="store_true",
         help="Use the mock adapter (demo mode, no car needed)",
@@ -608,6 +679,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def run_server(args: argparse.Namespace) -> None:
     global connection
+    if args.read_only is not True:
+        raise ValueError("This fork requires read-only operation")
 
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -648,10 +721,7 @@ async def run_server(args: argparse.Namespace) -> None:
             notify_uuid=args.ble_notify_uuid,
             name_hint=args.ble_name,
         )
-        try:
-            await ble_conn.connect()
-        except Exception as e:
-            logger.error("BLE connection failed: %s", e)
+        # Connect lazily from the first read, so MCP starts with the car off.
         connection = ble_conn
     else:
         logger.info("Connecting to real OBD adapter...")

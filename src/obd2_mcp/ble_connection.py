@@ -31,14 +31,44 @@ import logging
 import platform
 import re
 import subprocess
+import time
+from contextlib import asynccontextmanager
 from typing import Any
 
+from obd2_mcp.adapter_lease import AdapterBusyError, AdapterLease
+from obd2_mcp.diagnostics import (
+    QUARANTINED_IDS,
+    SOURCE_URL,
+    STANDARD_ECUS,
+    IncompleteResponse,
+    NegativeResponse,
+    ResponsePending,
+    decode_signal,
+    decode_standard,
+    eligible_extended,
+    extended_catalogue,
+    request_allowlist,
+    resolve_sensor_ids,
+    response_data,
+    standard_definition,
+    supported_pids,
+    utc_now,
+)
 from obd2_mcp.obd_connection import (
     DTC,
     FreezeFrame,
     Module,
     SensorReading,
     VehicleInfo,
+)
+from obd2_mcp.standard_diagnostics import (
+    DTC_SERVICES,
+    SECTIONS,
+    decode_dtcs,
+    decode_info,
+    decode_monitor,
+    dtc_code,
+    standard_read_commands,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +85,22 @@ OBD_NAME_PATTERNS = [
 
 # Banner prefixes that indicate a live ELM327-compatible adapter.
 ADAPTER_BANNERS = ("ELM", "STN", "OBD")
+
+# Local CT200h deployment: standard reads, pinned profile reads, local setup.
+# The check is at the BLE write boundary, so MCP argument strings cannot clear
+# faults, change ECU state, set arbitrary headers, or write programmable parameters.
+READ_ONLY_COMMANDS = frozenset((
+    "ATZ", "ATI", "ATRV", "ATDP", "ATDPN", "ATE0", "ATL0", "ATS0", "ATH1",
+    "ATCAF1", "ATAT1", "ATST64", "ATM0", "ATTP6", "ATCRA7E8", "ATSH7E0",
+    "0100", "0101", "0104", "0105", "0106", "0107", "010A", "010C", "010D",
+    "010E", "010F", "0110", "0111", "0142", "03", "0902",
+    # Session-local, fixed CAN routing/flow-control diagnostics. No ECU writes.
+    "ATSH7DF", "ATCRA", "ATCFC1", "ATFCSH7E2", "ATFCSD300000", "ATFCSM0", "ATFCSM1",
+    # Fixed behavior probes: formatting/filter/timing plus an invalid local AT
+    # command whose expected response is '?'. Not an ECU service passthrough.
+    "ATE1", "ATH0", "ATCM7FF", "ATCF7EA", "ATAT0", "ATSTFF", "ATQQ",
+    "ATAL", "ATNL",
+)) | request_allowlist() | standard_read_commands()
 
 # ---------------------------------------------------------------------------
 # Known BLE GATT UUID sets for ELM327-based adapters
@@ -338,6 +384,7 @@ class BLEOBDConnection:
     RETRY_DELAYS = [2.0, 5.0, 10.0]
     DEFAULT_TIMEOUT = 5.0
     PROTOCOL_TIMEOUT = 12.0
+    PENDING_RESPONSE_TIMEOUT = 5.0
     # Heartbeat: send a cheap ATRV every N seconds to keep the BLE link
     # awake. vLinker FD's idle-sleep cutoff is ~120s in stock firmware;
     # 30s is conservative. Set to 0 to disable.
@@ -367,11 +414,17 @@ class BLEOBDConnection:
         self._name_hint = name_hint
         self._client: Any = None
         self._connected = False
+        self._closed = False
+        self._adapter_lease: AdapterLease | None = None
+        self._leased_adapter: str | None = None
         self._adapter_name: str = ""
         self._adapter_version: str = ""
         self._loop: asyncio.AbstractEventLoop | None = None
         self._response_buffer = bytearray()
         self._response_event = asyncio.Event()
+        self.capture_trace = False
+        self._active_trace: dict | None = None
+        self._last_transaction: dict | None = None
         self._write_without_response = True
         self._notify_started = False
         # ELM327 is strictly request/response — only one command in flight
@@ -379,6 +432,11 @@ class BLEOBDConnection:
         # clobber each other's response buffer and produce wrong data
         # (or hang waiting for a prompt that already arrived).
         self._cmd_lock = asyncio.Lock()
+        # ECU selection and its subsequent reads must be one transaction.
+        # A per-command lock alone permits a concurrent tool to change headers.
+        self._diagnostic_lock = asyncio.Lock()
+        self._selected_ecu = ("7E0", "7E8")
+        self._standard_inventory: tuple[list[dict], list[dict]] | None = None
         # Capture the most recent connect failure so MCP tool errors can
         # include a useful root cause (instead of just "not connected").
         self._last_connect_error: str | None = None
@@ -395,6 +453,8 @@ class BLEOBDConnection:
     # ------------------------------------------------------------------
 
     async def connect(self) -> None:
+        if self._closed:
+            raise ConnectionError("This OBD session has been closed")
         self._loop = asyncio.get_running_loop()
         last_error: Exception | None = None
 
@@ -419,6 +479,9 @@ class BLEOBDConnection:
                         self._last_connect_error = None
                         return
                     last_error = RuntimeError("connect completed but adapter never answered")
+                except AdapterBusyError as e:
+                    self._last_connect_error = str(e)
+                    raise
                 except Exception as e:  # noqa: BLE001
                     last_error = e
                     logger.warning("BLE connection attempt %d failed: %s", attempt + 1, e)
@@ -448,11 +511,15 @@ class BLEOBDConnection:
             "  5. Try: obd2-mcp --probe"
         )
         self._last_connect_error = str(last_error) if last_error else "unknown"
+        self._release_adapter_lease()
         raise ConnectionError(message) from last_error
 
     async def _connect_once(self) -> None:
         """Single attempt: discover → connect → detect+validate UUIDs → init."""
         from bleak import BleakClient
+
+        if self._address and self._address.lower() != "auto":
+            self._claim_adapter(self._address)
 
         # 1. Resolve target device (auto-discover if needed)
         if not self._address or self._address.lower() == "auto":
@@ -474,6 +541,8 @@ class BLEOBDConnection:
                     f"Could not find device {self._address} via BLE scan"
                 )
             self._adapter_name = self._device.name or self._address[:17]
+
+        self._claim_adapter(self._device.address)
 
         # 2. Connect (pass BLEDevice for reliability per bleak docs)
         logger.info(
@@ -690,7 +759,7 @@ class BLEOBDConnection:
             logger.debug("ATZ attempt %d returned: %r", attempt + 1, resp)
             await asyncio.sleep(0.5)
         if not elm_seen:
-            logger.warning("ATZ never returned an adapter banner. Continuing.")
+            raise ConnectionError("Adapter did not return a valid ELM identity")
 
         # Configuration commands
         # ATE0  — echo off
@@ -703,20 +772,17 @@ class BLEOBDConnection:
         for cmd in ("ATE0", "ATL0", "ATS0", "ATH1", "ATCAF1", "ATAT1", "ATST64"):
             resp = await self._send_command(cmd, timeout=2.0)
             if "OK" not in resp.upper():
-                logger.debug("%s did not return OK (got: %r)", cmd, resp)
+                raise ConnectionError(f"Required adapter setup rejected: {cmd}: {resp}")
 
-        # Auto-protocol selection
-        await self._send_command("ATSP0", timeout=2.0)
-
-        # Best-effort: disable the ELM327 sleep timer (Programmable
-        # Parameter $0E controls sleep/standby on STN-based adapters and
-        # several ELM clones). Failing here is fine — many vendors use
-        # firmware-locked sleep.
-        try:
-            await self._send_command("ATPP 0E SV 00", timeout=1.5)
-            await self._send_command("ATPP 0E ON",    timeout=1.5)
-        except Exception:  # noqa: BLE001
-            pass
+        # CT200h standard 11-bit CAN, 500 kbit/s. Do not memorize protocol or
+        # write PP settings. Filter a single emissions responder, so the
+        # upstream decoder cannot concatenate different ECU responses.
+        for command in ("ATM0", "ATTP6", "ATSH7E0", "ATCRA7E8"):
+            response = await self._send_command(command, timeout=2.0)
+            if response.strip().upper() != "OK":
+                raise ConnectionError(f"Required CT200h adapter setup rejected: {command}: {response}")
+        self._selected_ecu = ("7E0", "7E8")
+        self._standard_inventory = None
 
     # ------------------------------------------------------------------
     # Disconnect / reconnect
@@ -793,9 +859,27 @@ class BLEOBDConnection:
         self._notify_started = False
 
     def _on_disconnect(self, _client) -> None:
+        if _client is not None and self._client is not None and _client is not self._client:
+            return
         logger.warning("BLE disconnected from %s", self._adapter_name)
         self._connected = False
         self._stop_keepalive()
+        # Retain the lease during reconnects. Ownership is a session boundary,
+        # not a per-command/per-link lock; another process must not steal it.
+
+    def _claim_adapter(self, address: str) -> None:
+        identity = address.lower()
+        if self._adapter_lease is None or self._leased_adapter != identity:
+            self._release_adapter_lease()
+            self._adapter_lease = AdapterLease(identity)
+            self._leased_adapter = identity
+        self._adapter_lease.acquire()
+
+    def _release_adapter_lease(self) -> None:
+        lease, self._adapter_lease = self._adapter_lease, None
+        self._leased_adapter = None
+        if lease is not None:
+            lease.release()
 
     async def _reconnect(self) -> None:
         logger.info("Attempting BLE reconnect...")
@@ -811,9 +895,19 @@ class BLEOBDConnection:
     # ------------------------------------------------------------------
 
     def _on_notify(self, _sender, data: bytearray) -> None:
+        # The producer may reuse a mutable buffer before the loop runs _apply.
+        chunk = bytes(data)
+        received_at, monotonic_ns = utc_now(), time.monotonic_ns()
+        trace = self._active_trace
+
         def _apply() -> None:
-            self._response_buffer.extend(data)
-            if b">" in self._response_buffer:
+            self._response_buffer.extend(chunk)
+            if trace is not None:
+                trace["chunks"].append({
+                    "received_at": received_at, "monotonic_ns": monotonic_ns,
+                    "hex": chunk.hex().upper(), "ascii": chunk.decode("ascii", errors="replace"),
+                })
+            if b">" in chunk:
                 self._response_event.set()
 
         if self._loop is not None and self._loop.is_running():
@@ -824,17 +918,50 @@ class BLEOBDConnection:
                 pass
         _apply()
 
+    @property
+    def last_transaction(self) -> dict | None:
+        return self._last_transaction
+
+    @asynccontextmanager
+    async def _trace_command(self, cmd: str):
+        trace = None
+        if self.capture_trace:
+            trace = {"wire_command": cmd, "canonical_command": cmd.replace(" ", ""),
+                     "started_at": utc_now(), "monotonic_start_ns": time.monotonic_ns(),
+                     "requested_tx_header": self._selected_ecu[0] if self._selected_ecu else None,
+                     "requested_rx_filter": self._selected_ecu[1] if self._selected_ecu else None,
+                     "policy_allowed": True, "ble_write_done": False, "prompt_seen": False,
+                     "write_with_response": not self._write_without_response, "chunks": []}
+        self._active_trace = trace
+        try:
+            yield
+        finally:
+            if trace is not None:
+                trace["finished_at"] = utc_now()
+                trace["raw_response"] = "".join(c["ascii"] for c in trace["chunks"])
+                trace["prompt_seen"] = ">" in trace["raw_response"]
+            self._last_transaction = trace
+            self._active_trace = None
+
     async def _send_command(self, cmd: str, timeout: float | None = None) -> str:
+        # Spaces are legal ELM formatting, not command separators. Preserve
+        # them on the wire for clone compatibility, after validating one command.
+        if (not isinstance(cmd, str) or len(cmd) > 32
+                or not re.fullmatch(r"[A-Z0-9 ]+", cmd)
+                or cmd.replace(" ", "") not in READ_ONLY_COMMANDS):
+            raise ValueError("Command is outside the fixed CT200h read-only allowlist")
         if timeout is None:
             timeout = self.DEFAULT_TIMEOUT
 
         # Serialize: ELM327 is one-command-at-a-time. Without this, parallel
         # MCP tool calls race on the shared response buffer.
-        async with self._cmd_lock:
+        async with self._cmd_lock, self._trace_command(cmd):
             if self._client is None or not self._client.is_connected:
-                await self._reconnect()
-                if self._client is None or not self._client.is_connected:
-                    return ""
+                # Reinitialization calls _send_command itself. Doing it while
+                # holding _cmd_lock deadlocks and can reset a selected ECU.
+                # The next MCP call reconnects through ensure_ready instead.
+                self._connected = False
+                raise ConnectionError("BLE disconnected; retry the read to reconnect")
 
             self._response_buffer.clear()
             self._response_event.clear()
@@ -845,26 +972,38 @@ class BLEOBDConnection:
                     self._write_uuid, payload,
                     response=not self._write_without_response,
                 )
-            except Exception as e:  # noqa: BLE001
-                logger.warning("BLE write failed (%s); reconnecting…", e)
-                await self._reconnect()
-                if self._client is None or not self._client.is_connected:
-                    return ""
-                self._response_buffer.clear()
-                self._response_event.clear()
-                try:
-                    await self._client.write_gatt_char(
-                        self._write_uuid, payload,
-                        response=not self._write_without_response,
-                    )
-                except Exception as e2:  # noqa: BLE001
-                    logger.error("BLE write failed after reconnect: %s", e2)
-                    return ""
+                if self._active_trace is not None:
+                    self._active_trace["ble_write_done"] = True
+            except Exception as e:
+                self._connected = False
+                await self._safe_disconnect()
+                raise ConnectionError(f"BLE write failed; retry the read to reconnect: {e}") from e
 
-            try:
-                await asyncio.wait_for(self._response_event.wait(), timeout=timeout)
-            except asyncio.TimeoutError:
-                logger.debug("Timeout (%.1fs) waiting for response to: %s", timeout, cmd)
+            pending_deadline = None
+            remaining = timeout
+            while True:
+                try:
+                    await asyncio.wait_for(self._response_event.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    self._connected = False
+                    await self._safe_disconnect()
+                    self._selected_ecu = None
+                    raise TimeoutError(f"No complete/final adapter response to {cmd} before deadline") from None
+                if self._selected_ecu and not cmd.startswith("AT"):
+                    try:
+                        response_data(bytes(self._response_buffer).decode("ascii", errors="replace"),
+                                      self._selected_ecu[1], cmd.replace(" ", ""))
+                    except ResponsePending:
+                        if pending_deadline is None:
+                            pending_deadline = time.monotonic() + self.PENDING_RESPONSE_TIMEOUT
+                        remaining = max(0.0, pending_deadline - time.monotonic())
+                        if self._active_trace is not None:
+                            self._active_trace["response_pending_seen"] = True
+                        self._response_event.clear()
+                        continue
+                    except ValueError:
+                        pass  # The request decoder reports errors/partial data explicitly.
+                break
 
             raw = bytes(self._response_buffer).decode("ascii", errors="replace")
             lines = _clean_elm_response(raw, echoed_cmd=cmd)
@@ -905,25 +1044,22 @@ class BLEOBDConnection:
             raise
 
     async def get_dtcs(self, module: str | None = None) -> list[DTC]:
+        async with self._sensor_session():
+            await self._select_ecu("7E0", "7E8")
+            return await self._get_engine_dtcs(module)
+
+    async def _get_engine_dtcs(self, module: str | None = None) -> list[DTC]:
+        if module not in (None, "engine", "7E8", "0x7E8"):
+            raise ValueError("This deployment reads only emissions ECU response 7E8")
         response = await self._send_command("03", timeout=self.PROTOCOL_TIMEOUT)
-        dtcs: list[DTC] = []
         if not response or self._is_bus_error(response):
-            return dtcs
+            raise RuntimeError(f"DTC read unavailable; fault state is unknown: {response!r}")
 
         from obd2_mcp.dtc_database import lookup_dtc
 
-        hex_payload = self._extract_mode_payload(response.split("\n"), "43")
-        for i in range(0, len(hex_payload) - 3, 4):
-            try:
-                byte1 = int(hex_payload[i:i + 2], 16)
-                byte2 = int(hex_payload[i + 2:i + 4], 16)
-                if byte1 == 0 and byte2 == 0:
-                    continue
-                code = self._decode_dtc(byte1, byte2)
-                dtcs.append(DTC(code=code, description=lookup_dtc(code)))
-            except (ValueError, IndexError):
-                continue
-        return dtcs
+        decoded = decode_dtcs(response_data(response, "7E8", "03"), "03")
+        return [DTC(code=item["code"], description=lookup_dtc(item["code"]))
+                for item in decoded["dtcs"]]
 
     @staticmethod
     def _is_bus_error(response: str) -> bool:
@@ -948,6 +1084,11 @@ class BLEOBDConnection:
         started = False
         for line in lines:
             flat = line.upper().replace(" ", "").replace(":", "")
+            # Cheap clones can accept AT CRA yet return other ECU replies.
+            # In header-on 11-bit CAN, 3 header digits + byte pairs has odd
+            # length. Never concatenate another responder into selected 7E8.
+            if len(flat) % 2 and re.match(r"^[0-7][0-9A-F]{2}", flat) and flat[:3] != "7E8":
+                continue
             if not started:
                 idx = flat.find(tag)
                 if idx >= 0:
@@ -964,50 +1105,306 @@ class BLEOBDConnection:
         return joined
 
     async def clear_dtcs(self, module: str | None = None) -> bool:
-        response = await self._send_command("04", timeout=self.DEFAULT_TIMEOUT)
-        return "44" in response or "OK" in response.upper()
+        raise PermissionError("Fault clearing is disabled in this read-only deployment")
+
+    async def _select_ecu(self, tx: str, rx: str) -> None:
+        if self._selected_ecu == (tx, rx):
+            return
+        # Both headers come from a fixed catalogue, not caller-provided strings.
+        self._selected_ecu = None
+        for command in (f"ATSH{tx}", f"ATCRA{rx}"):
+            reply = await self._send_command(command, timeout=2.0)
+            if reply.strip().upper() != "OK":
+                raise RuntimeError(f"ECU selection rejected: {command}: {reply}")
+        self._selected_ecu = (tx, rx)
+
+    @asynccontextmanager
+    async def _sensor_session(self):
+        async with self._diagnostic_lock:
+            try:
+                yield
+            finally:
+                # Never leave stored-code reads aimed at a hybrid/body ECU.
+                if self._client is None and self._selected_ecu != ("7E0", "7E8"):
+                    self._selected_ecu = None
+                else:
+                    await self._select_ecu("7E0", "7E8")
+
+    async def _query_sensor(self, definition: dict,
+                            allow_partial_prefix: bool = False) -> tuple[dict, bytes | None]:
+        tx, rx, command = definition["hdr"], definition["rax"], definition["request"]
+        record = {"request_ecu": tx, "response_ecu": rx, "command": command,
+                  "started_at": utc_now(), "status": "unknown"}
+        try:
+            await self._select_ecu(tx, rx)
+            raw = await self._send_command(command, timeout=self.PROTOCOL_TIMEOUT)
+            record["raw_response"] = raw
+            if self.capture_trace:
+                record["transport_trace"] = self.last_transaction
+            if "BUFFER FULL" in raw.upper():
+                record["status"] = "transport_overrun"
+                return record, None
+            if not raw or self._is_bus_error(raw) or raw.strip() == "?":
+                record["status"] = "no_data" if "NO DATA" in raw.upper() else "adapter_error"
+                return record, None
+            payload = response_data(raw, rx, command)
+            record.update(status="response_received", payload_hex=payload.hex().upper())
+            return record, payload
+        except IncompleteResponse as error:
+            record.update(status="incomplete_response", error=str(error),
+                          declared_message_bytes=error.expected_length,
+                          received_message_bytes=len(error.prefix))
+            tag = bytes((int(command[:2], 16) + 0x40,)) + bytes.fromhex(command[2:])
+            if (allow_partial_prefix and (tx, rx, command) == ("7E2", "7EA", "2181")
+                    and error.expected_length == 35 and len(error.prefix) == 34
+                    and error.prefix.startswith(tag)):
+                payload = error.prefix[len(tag):]
+                record.update(status="partial_prefix", payload_hex=payload.hex().upper())
+                return record, payload
+        except NegativeResponse as error:
+            record.update(status="negative_response", nrc=f"{error.code:02X}", error=str(error))
+        except TimeoutError as error:
+            # No following request may consume late fragments of this one.
+            self._connected = False
+            await self._safe_disconnect()
+            record.update(status="timeout", error=str(error))
+            raise TimeoutError(f"Sensor read timed out; BLE session closed: {record}") from error
+        except ValueError as error:
+            record.update(status="invalid_response", error=str(error))
+        finally:
+            record["finished_at"] = utc_now()
+        return record, None
+
+    async def _discover_standard(self, refresh: bool = False) -> tuple[list[dict], list[dict]]:
+        if self._standard_inventory is not None and not refresh:
+            return self._standard_inventory
+        definitions, discovery = [], []
+        for tx, rx in STANDARD_ECUS:
+            for base in range(0, 0x100, 0x20):
+                d = {"hdr": tx, "rax": rx, "request": f"01{base:02X}"}
+                record, data = await self._query_sensor(d)
+                discovery.append(record)
+                if data is None:
+                    break
+                try:
+                    pids = supported_pids(data, base)
+                except ValueError as error:
+                    record.update(status="invalid_response", error=str(error))
+                    break
+                definitions.extend(standard_definition(pid, tx, rx) for pid in pids if pid % 32)
+                record["advertised_pids"] = [f"{pid:02X}" for pid in pids]
+                if base + 32 not in pids:
+                    break
+        self._standard_inventory = (definitions, discovery)
+        return self._standard_inventory
+
+    async def list_sensors(self, scope: str = "all", offset: int = 0,
+                           limit: int = 50, refresh: bool = False) -> dict:
+        if scope not in ("standard", "extended", "all") or offset < 0 or not 1 <= limit <= 100:
+            raise ValueError("Invalid scope or catalogue page (limit 1..100)")
+        entries, discovery = [], []
+        if scope in ("standard", "all"):
+            async with self._sensor_session():
+                standard, discovery = await self._discover_standard(refresh)
+            entries.extend({"pid": d["id"], "name": d["name"], "scope": "standard",
+                            "request_ecu": d["hdr"], "response_ecu": d["rax"],
+                            "command": d["request"], "support": "advertised_by_ecu"}
+                           for d in standard)
+        if scope in ("extended", "all"):
+            for d in extended_catalogue():
+                for signal in d["signals"]:
+                    entries.append({"pid": signal["id"], "name": signal["name"],
+                                    "unit": signal["fmt"].get("unit", ""), "scope": "extended",
+                                    "request_ecu": d["hdr"], "response_ecu": d["rax"],
+                                    "command": d["request"], "support": "not_probed",
+                                    "verification": d["verification"],
+                                    "definition_quarantined": signal["id"] in QUARANTINED_IDS,
+                                    "applicable_year": d["applicable_year"],
+                                    "transport_supported": d["transport_supported"]})
+        page = entries[offset:offset + limit]
+        return {"scope": scope, "catalogue_count": len(entries), "sensors": page,
+                "offset": offset,
+                "next_offset": offset + len(page) if offset + len(page) < len(entries) else None,
+                "discovery": discovery, "extended_source": SOURCE_URL,
+                "note": "Catalogue entries are not proof of successful reads or complete vehicle coverage."}
+
+    async def read_snapshot(self, pids: list[str] | None = None, scope: str = "standard",
+                            offset: int = 0, limit: int = 32,
+                            allow_partial_prefix: bool = False,
+                            response_ecus: list[str] | None = None) -> dict:
+        if not isinstance(allow_partial_prefix, bool):
+            raise TypeError("allow_partial_prefix must be a boolean")
+        if scope not in ("standard", "extended", "all") or offset < 0 or not 1 <= limit <= 64:
+            raise ValueError("Invalid scope or request page (limit 1..64)")
+        if pids is not None and (not pids or len(pids) > 64):
+            raise ValueError("pids must contain 1..64 exact catalogue sensor IDs")
+        ecu_filter = None
+        if response_ecus is not None:
+            registered = {rx for _, rx in STANDARD_ECUS} | {d["rax"] for d in eligible_extended()}
+            if not response_ecus or any(not isinstance(rx, str) or rx.upper() not in registered
+                                         for rx in response_ecus):
+                raise ValueError("response_ecus must contain registered response ECU IDs")
+            ecu_filter = {rx.upper() for rx in response_ecus}
+        # Reject every unknown ID before any Bluetooth command is sent.
+        selected = resolve_sensor_ids(pids) if pids is not None else None
+        selected_ids = {pid.upper() for pid in pids} if pids is not None else None
+        started, readings, unavailable, requests, discovery = utc_now(), [], [], [], []
+        async with self._sensor_session():
+            if selected is None:
+                selected = []
+                if scope in ("standard", "all"):
+                    standard, discovery = await self._discover_standard()
+                    selected.extend(standard)
+                if scope in ("extended", "all"):
+                    selected.extend(eligible_extended())
+            if ecu_filter is not None:
+                selected = [d for d in selected if d["rax"] in ecu_filter]
+            total = len(selected)
+            page = selected[offset:offset + limit]
+            for definition in page:
+                record, data = await self._query_sensor(definition, allow_partial_prefix)
+                requests.append(record)
+                fields = ([{"id": definition["id"], "name": definition["name"]}]
+                          if "standard_pid" in definition else definition["signals"])
+                for signal in fields:
+                    if selected_ids is not None and signal["id"] not in selected_ids:
+                        continue
+                    item = {"pid": signal["id"], "name": signal["name"],
+                            "request_ecu": definition["hdr"], "response_ecu": definition["rax"],
+                            "command": definition["request"], "sampled_at": record["finished_at"],
+                            "verification": definition["verification"]}
+                    if "standard_pid" not in definition:
+                        item["source"] = SOURCE_URL
+                    if data is None:
+                        unavailable.append({**item, "status": record["status"]})
+                        continue
+                    if (record["status"] == "partial_prefix"
+                            and signal["fmt"].get("bix", 0) + signal["fmt"]["len"] > 224):
+                        unavailable.append({**item, "status": "prefix_field_not_allowed"})
+                        continue
+                    try:
+                        value = (decode_standard(definition, data) if "standard_pid" in definition
+                                 else decode_signal(signal, data))
+                        item.update(value)
+                        item["transport_complete"] = record["status"] == "response_received"
+                        item["field_complete"] = value["status"] != "definition_quarantined"
+                        if record["status"] == "partial_prefix" and item["status"] == "decoded_unverified":
+                            item["status"] = "decoded_partial_unverified"
+                            item["application_integrity"] = "unknown"
+                            item["checksum_valid"] = None
+                    except (ValueError, IndexError, KeyError, ZeroDivisionError) as error:
+                        item.update(status="decode_error", error=str(error))
+                    # Preserve rejected values as evidence; do not fabricate/clamp.
+                    (readings if item["status"] in ("ok", "decoded_unverified", "raw_only",
+                                                   "decoded_partial_unverified")
+                     else unavailable).append(item)
+        next_offset = offset + len(page) if offset + len(page) < total else None
+        return {"started_at": started, "finished_at": utc_now(), "scope": scope,
+                "reading_count": len(readings), "readings": readings, "unavailable": unavailable,
+                "complete_reading_count": sum(r.get("transport_complete", False) for r in readings),
+                "partial_reading_count": sum(r["status"] == "decoded_partial_unverified" for r in readings),
+                "requests": requests, "discovery": discovery,
+                "coverage": {"candidate_request_count": total, "attempted_request_count": len(page),
+                             "offset": offset, "next_offset": next_offset,
+                             "response_ecu_filter": sorted(ecu_filter) if ecu_filter is not None else None,
+                             "partial_prefix_opt_in": allow_partial_prefix,
+                             "entire_selected_catalogue_attempted": offset == 0 and next_offset is None,
+                             "vehicle_coverage_complete": False,
+                             "note": "Sequential readings. Extended definitions remain unverified; "
+                                     "this is not a complete list of everything the ELM327/vehicle can read."}}
+
+    async def get_diagnostics(self, section: str = "dtc", ecu: str = "engine",
+                              offset: int = 0, limit: int = 32) -> dict:
+        if section not in (*SECTIONS, "all") or ecu not in ("engine", "hybrid"):
+            raise ValueError("Unknown standard diagnostic section or ECU")
+        if offset < 0 or not 1 <= limit <= 64:
+            raise ValueError("Invalid diagnostic page (limit 1..64)")
+        tx, rx = STANDARD_ECUS[0 if ecu == "engine" else 1]
+        sections = SECTIONS if section == "all" else (section,)
+        queue, discovery, records, requests = [], [], [], []
+        started = utc_now()
+
+        async def discover(service: str, suffix: str = "") -> list[int]:
+            found = []
+            for base in range(0, 256, 32):
+                command = f"{service}{base:02X}{suffix}"
+                record, data = await self._query_sensor({"hdr": tx, "rax": rx, "request": command})
+                discovery.append(record)
+                if data is None:
+                    break
+                try:
+                    ids = supported_pids(data, base)
+                except ValueError as error:
+                    record.update(status="invalid_response", error=str(error))
+                    break
+                found.extend(pid for pid in ids if pid % 32)
+                record["advertised_ids"] = [f"{pid:02X}" for pid in ids]
+                if base + 32 not in ids:
+                    break
+            return found
+
+        async with self._sensor_session():
+            if "dtc" in sections:
+                queue.extend(("dtc", service, None) for service in DTC_SERVICES)
+            if "identity" in sections:
+                queue.extend(("identity", f"09{pid:02X}", pid) for pid in await discover("09"))
+            if "freeze_frame" in sections:
+                # Frame 0 only. The triggering code is useful even if support discovery fails.
+                queue.append(("freeze_frame", "020200", 2))
+                queue.extend(("freeze_frame", f"02{pid:02X}00", pid)
+                             for pid in await discover("02", "00") if pid != 2)
+            if "monitors" in sections:
+                queue.extend(("monitors", f"06{mid:02X}", mid) for mid in await discover("06"))
+
+            for kind, command, pid in queue[offset:offset + limit]:
+                request, data = await self._query_sensor({"hdr": tx, "rax": rx, "request": command})
+                requests.append(request)
+                item = {"section": kind, "command": command, "response_ecu": rx,
+                        "sampled_at": request["finished_at"], "status": request["status"]}
+                if data is not None:
+                    try:
+                        if kind == "dtc":
+                            value = decode_dtcs(data, command)
+                        elif kind == "identity":
+                            value = decode_info(data, pid)
+                        elif kind == "monitors":
+                            value = decode_monitor(data, pid)
+                        elif pid == 2:
+                            if len(data) < 2:
+                                raise ValueError("Missing freeze-frame triggering DTC")
+                            value = {"frame": 0, "triggering_dtc":
+                                     None if data[:2] == b"\x00\x00" else dtc_code(data[:2])}
+                        else:
+                            definition = standard_definition(pid, tx, rx)
+                            value = {"frame": 0, "pid": definition["id"],
+                                     **decode_standard(definition, data)}
+                        item.update(status=value.get("availability", "ok"), data=value)
+                    except (ValueError, IndexError, KeyError) as error:
+                        item.update(status="decode_error", error=str(error))
+                records.append(item)
+
+        next_offset = offset + len(requests) if offset + len(requests) < len(queue) else None
+        return {"section": section, "ecu": ecu, "request_ecu": tx, "response_ecu": rx,
+                "started_at": started, "finished_at": utc_now(), "records": records,
+                "requests": requests, "discovery": discovery,
+                "coverage": {"candidate_request_count": len(queue), "offset": offset,
+                             "attempted_request_count": len(requests), "next_offset": next_offset,
+                             "vehicle_coverage_complete": False, "freeze_frame_indices": [0],
+                             "note": "Only the selected emissions ECU is covered. Mode 06 normalizes five "
+                                     "validated scaling IDs; unknown units and semantic pass/fail remain unknown. "
+                                     "No-data is unknown; freeze frame 0 only."}}
 
     async def get_live_data(self, pids: list[str] | None = None) -> list[SensorReading]:
-        pid_map = {
-            "RPM": ("010C", 2, lambda b: ((b[0] << 8) | b[1]) / 4, "rpm"),
-            "SPEED": ("010D", 1, lambda b: b[0], "km/h"),
-            "COOLANT_TEMP": ("0105", 1, lambda b: b[0] - 40, "°C"),
-            "ENGINE_LOAD": ("0104", 1, lambda b: b[0] * 100 / 255, "%"),
-            "INTAKE_TEMP": ("010F", 1, lambda b: b[0] - 40, "°C"),
-            "THROTTLE_POS": ("0111", 1, lambda b: b[0] * 100 / 255, "%"),
-            "TIMING_ADVANCE": ("010E", 1, lambda b: b[0] / 2 - 64, "°"),
-            "MAF": ("0110", 2, lambda b: ((b[0] << 8) | b[1]) / 100, "g/s"),
-            "FUEL_PRESSURE": ("010A", 1, lambda b: b[0] * 3, "kPa"),
-            "SHORT_FUEL_TRIM_1": ("0106", 1, lambda b: (b[0] - 128) * 100 / 128, "%"),
-            "LONG_FUEL_TRIM_1": ("0107", 1, lambda b: (b[0] - 128) * 100 / 128, "%"),
-            "CONTROL_MODULE_VOLTAGE": ("0142", 2, lambda b: ((b[0] << 8) | b[1]) / 1000, "V"),
-        }
-
-        target_pids = [p.upper() for p in (pids or pid_map.keys())]
-        readings: list[SensorReading] = []
-        for key in target_pids:
-            if key not in pid_map:
-                continue
-            obd_cmd, num_bytes, converter, unit = pid_map[key]
-            response = await self._send_command(obd_cmd, timeout=self.PROTOCOL_TIMEOUT)
-            if not response or self._is_bus_error(response):
-                continue
-            tag = "41" + obd_cmd[2:]
-            hex_payload = self._extract_mode_payload(response.split("\n"), tag)
-            if not hex_payload or len(hex_payload) < num_bytes * 2:
-                continue
-            try:
-                data_bytes = [int(hex_payload[i*2:i*2+2], 16) for i in range(num_bytes)]
-                value = converter(data_bytes)
-                readings.append(SensorReading(
-                    pid=key, name=key.replace("_", " ").title(),
-                    value=round(value, 2), unit=unit,
-                ))
-            except (ValueError, IndexError) as err:
-                logger.debug("Failed to parse %s: %s (raw=%r)", key, err, response)
-        return readings
+        snapshot = await self.read_snapshot(pids=pids, limit=64)
+        return [SensorReading(pid=r["pid"], name=r["name"], value=r["value"], unit=r["unit"])
+                for r in snapshot["readings"]]
 
     async def get_vehicle_info(self) -> VehicleInfo:
+        async with self._sensor_session():
+            await self._select_ecu("7E0", "7E8")
+            return await self._get_engine_vehicle_info()
+
+    async def _get_engine_vehicle_info(self) -> VehicleInfo:
         info = VehicleInfo()
         vin_raw = await self._send_command("0902", timeout=self.PROTOCOL_TIMEOUT)
         if vin_raw and not self._is_bus_error(vin_raw):
@@ -1033,6 +1430,11 @@ class BLEOBDConnection:
         return info
 
     async def list_modules(self) -> list[Module]:
+        async with self._sensor_session():
+            await self._select_ecu("7E0", "7E8")
+            return await self._list_engine_modules()
+
+    async def _list_engine_modules(self) -> list[Module]:
         response = await self._send_command("0100", timeout=self.PROTOCOL_TIMEOUT)
         modules: list[Module] = []
         if not response or self._is_bus_error(response):
@@ -1088,11 +1490,13 @@ class BLEOBDConnection:
         return FreezeFrame(dtc_code=dtc_code.upper())
 
     def close(self) -> None:
+        self._closed = True
         self._connected = False
         self._stop_keepalive()
         client = self._client
         self._client = None
         if client is None:
+            self._release_adapter_lease()
             return
 
         async def _do_disconnect() -> None:
@@ -1101,6 +1505,8 @@ class BLEOBDConnection:
                     await client.disconnect()
             except Exception:  # noqa: BLE001
                 pass
+            finally:
+                self._release_adapter_lease()
 
         try:
             loop = asyncio.get_event_loop()

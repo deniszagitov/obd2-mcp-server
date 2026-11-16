@@ -1,0 +1,6 @@
+Lexus CT200h signal definitions by the OBDb/Lexus-CT-200h contributors.
+Source: https://github.com/OBDb/Lexus-CT-200h
+Commit: d5067c8578d05b0e224df19232798caa660a11b9
+File: signalsets/v3/default.json (unmodified)
+License: CC BY-SA 4.0; see OBDb-LICENSE.txt.
+This data license is separate from the MIT license of the Python server code.

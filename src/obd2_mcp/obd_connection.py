@@ -6,6 +6,7 @@ and provides a clean async-friendly interface for the MCP tools.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -128,9 +129,18 @@ class RealOBDConnection:
     def is_connected(self) -> bool:
         return self._conn.is_connected()
 
+    def _query_read_only(self, cmd):
+        # All serial queries pass this boundary. No arbitrary AT string, reset,
+        # clear, coding, actuator or security-access command may reach query().
+        if (not isinstance(cmd, self._obd.OBDCommand) or cmd.mode not in (1, 2, 3, 6, 7, 9, 10)
+                or re.fullmatch(rb"(?:01[0-9A-F]{2}|02[0-9A-F]{2}(?:[0-9A-F]{2})?|03|"
+                                rb"06(?:[0-9A-F]{2})?|07|09[0-9A-F]{2}|0A)", cmd.command) is None):
+            raise PermissionError("Command rejected by the serial read-only boundary")
+        return self._conn.query(cmd)
+
     def get_dtcs(self, module: str | None = None) -> list[DTC]:
         cmd = self._obd.commands.GET_DTC
-        response = self._conn.query(cmd)
+        response = self._query_read_only(cmd)
         if response.is_null():
             return []
         dtcs: list[DTC] = []
@@ -139,32 +149,37 @@ class RealOBDConnection:
         return dtcs
 
     def clear_dtcs(self, module: str | None = None) -> bool:
-        cmd = self._obd.commands.CLEAR_DTC
-        response = self._conn.query(cmd)
-        return not response.is_null()
+        raise PermissionError("Fault clearing is disabled by the read-only policy")
 
     def get_live_data(self, pids: list[str] | None = None) -> list[SensorReading]:
         readings: list[SensorReading] = []
         if pids:
+            # Validate the complete batch before querying anything. getattr
+            # alone also exposes action commands such as CLEAR_DTC (Mode 04).
+            targets = []
             for pid_name in pids:
-                if hasattr(self._obd.commands, pid_name.upper()):
-                    cmd = getattr(self._obd.commands, pid_name.upper())
-                    response = self._conn.query(cmd)
-                    if not response.is_null():
-                        val = response.value
-                        unit = str(val.units) if hasattr(val, "units") else ""
-                        magnitude = val.magnitude if hasattr(val, "magnitude") else val
-                        readings.append(SensorReading(
-                            pid=pid_name,
-                            name=cmd.name,
-                            value=magnitude,
-                            unit=unit,
-                        ))
+                cmd = (getattr(self._obd.commands, pid_name.upper(), None)
+                       if isinstance(pid_name, str) else None)
+                if not isinstance(cmd, self._obd.OBDCommand) or cmd.mode != 1:
+                    raise ValueError("Live data accepts only known Mode 01 sensor names")
+                targets.append((pid_name, cmd))
+            for pid_name, cmd in targets:
+                response = self._query_read_only(cmd)
+                if not response.is_null():
+                    val = response.value
+                    unit = str(val.units) if hasattr(val, "units") else ""
+                    magnitude = val.magnitude if hasattr(val, "magnitude") else val
+                    readings.append(SensorReading(
+                        pid=pid_name,
+                        name=cmd.name,
+                        value=magnitude,
+                        unit=unit,
+                    ))
         else:
             # Return a standard set of common PIDs
             for cmd in self._obd.commands[1]:  # mode 01
                 if cmd and self._conn.supports(cmd):
-                    response = self._conn.query(cmd)
+                    response = self._query_read_only(cmd)
                     if not response.is_null():
                         val = response.value
                         unit = str(val.units) if hasattr(val, "units") else ""
@@ -181,12 +196,12 @@ class RealOBDConnection:
         info = VehicleInfo()
         # VIN
         if hasattr(self._obd.commands, "VIN"):
-            resp = self._conn.query(self._obd.commands.VIN)
+            resp = self._query_read_only(self._obd.commands.VIN)
             if not resp.is_null():
                 info.vin = str(resp.value)
         # ECU name
         if hasattr(self._obd.commands, "ECU_NAME"):
-            resp = self._conn.query(self._obd.commands.ECU_NAME)
+            resp = self._query_read_only(self._obd.commands.ECU_NAME)
             if not resp.is_null():
                 info.ecu_name = str(resp.value)
         return info
@@ -206,7 +221,7 @@ class RealOBDConnection:
 
     def get_freeze_frame(self, dtc_code: str) -> FreezeFrame | None:
         cmd = self._obd.commands.FREEZE_DTC
-        response = self._conn.query(cmd)
+        response = self._query_read_only(cmd)
         if response.is_null():
             return None
         frame = FreezeFrame(dtc_code=dtc_code)

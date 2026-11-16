@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "obd2-mcp-server"
-version = "0.1.0"
+version = "0.1.1.dev0"
 description = "MCP server that bridges a car's OBD-II port to Claude via the Model Context Protocol"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,9 @@ obd2-mcp = "obd2_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+obd2_mcp = ["profiles/*.json", "profiles/*.txt", "dtc_db/*.json", "dtc_db/*/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
